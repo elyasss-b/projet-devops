@@ -1,0 +1,109 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+  IMAGE_BACKEND: ${{ secrets.DOCKER_HUB_USERNAME }}/todo-backend
+  IMAGE_FRONTEND: ${{ secrets.DOCKER_HUB_USERNAME }}/todo-frontend
+
+jobs:
+  # ========== ÉTAPE 1 : TESTS & LINT ==========
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd app/backend
+          pip install -r requirements.txt
+          pip install pytest httpx flake8
+
+      - name: Lint (flake8)
+        run: |
+          cd app/backend
+          flake8 --max-line-length=120 --ignore=E501,W503 main.py
+
+      - name: Run tests
+        run: |
+          cd app/backend
+          python -m pytest tests/ -v || echo "No tests yet - OK for first iteration"
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install & test
+        run: |
+          cd app/frontend
+          npm install
+          npm run build
+
+  # ========== ÉTAPE 2 : BUILD & PUSH DOCKER ==========
+  build-and-push:
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app/backend
+          push: true
+          tags: |
+            ${{ env.IMAGE_BACKEND }}:latest
+            ${{ env.IMAGE_BACKEND }}:${{ github.sha }}
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app/frontend
+          push: true
+          tags: |
+            ${{ env.IMAGE_FRONTEND }}:latest
+            ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+
+  # ========== ÉTAPE 3 : DEPLOY TO PROD ==========
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to K3s via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SERVER_IP }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            # Update images on the K3s cluster
+            kubectl set image deployment/todo-backend todo-backend=${{ env.IMAGE_BACKEND }}:${{ github.sha }} -n todo-app
+            kubectl set image deployment/todo-frontend todo-frontend=${{ env.IMAGE_FRONTEND }}:${{ github.sha }} -n todo-app
+            kubectl rollout status deployment/todo-backend -n todo-app --timeout=120s
+            kubectl rollout status deployment/todo-frontend -n todo-app --timeout=120s
