@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -101,7 +101,7 @@ async def update_task(task_id: int, task: TaskUpdate):
     if not values:
         raise HTTPException(status_code=400, detail="No fields to update")
     query = tasks.update().where(tasks.c.id == task_id).values(**values)
-    result = await database.execute(query)
+    await database.execute(query)
     return await get_task(task_id)
 
 
