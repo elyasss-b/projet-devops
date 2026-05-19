@@ -3,7 +3,6 @@ kind: Namespace
 metadata:
   name: monitoring
 ---
-# ========== PROMETHEUS ==========
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -13,42 +12,16 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
-      evaluation_interval: 15s
-
     scrape_configs:
-      # Prometheus lui-même
       - job_name: 'prometheus'
         static_configs:
           - targets: ['localhost:9090']
-
-      # cAdvisor - métriques conteneurs
-      - job_name: 'cadvisor'
-        static_configs:
-          - targets: ['cadvisor:8080']
-
-      # Backend FastAPI (si métriques exposées)
-      - job_name: 'todo-backend'
-        static_configs:
-          - targets: ['backend.todo-app.svc.cluster.local:8000']
-        metrics_path: /api/health
-
-      # Node Exporter - métriques système
       - job_name: 'node-exporter'
         static_configs:
           - targets: ['node-exporter:9100']
-
-      # Kubernetes API
-      - job_name: 'kubernetes-apiservers'
-        kubernetes_sd_configs:
-          - role: endpoints
-        scheme: https
-        tls_config:
-          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
-            action: keep
-            regex: default;kubernetes;https
+      - job_name: 'kube-state'
+        static_configs:
+          - targets: ['kube-state-metrics.kube-system.svc.cluster.local:8080']
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -73,14 +46,10 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus
-            - name: data
-              mountPath: /prometheus
       volumes:
         - name: config
           configMap:
             name: prometheus-config
-        - name: data
-          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -90,13 +59,45 @@ metadata:
 spec:
   selector:
     app: prometheus
+  type: NodePort
   ports:
     - port: 9090
       targetPort: 9090
       nodePort: 30090
-  type: NodePort
 ---
-# ========== GRAFANA ==========
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostNetwork: true
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.7.0
+          ports:
+            - containerPort: 9100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-exporter
+  namespace: monitoring
+spec:
+  selector:
+    app: node-exporter
+  ports:
+    - port: 9100
+      targetPort: 9100
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -131,97 +132,8 @@ metadata:
 spec:
   selector:
     app: grafana
+  type: NodePort
   ports:
     - port: 3000
       targetPort: 3000
       nodePort: 30030
-  type: NodePort
----
-# ========== cAdvisor ==========
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: cadvisor
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app: cadvisor
-  template:
-    metadata:
-      labels:
-        app: cadvisor
-    spec:
-      containers:
-        - name: cadvisor
-          image: gcr.io/cadvisor/cadvisor:v0.47.2
-          ports:
-            - containerPort: 8080
-          volumeMounts:
-            - name: rootfs
-              mountPath: /rootfs
-              readOnly: true
-            - name: var-run
-              mountPath: /var/run
-              readOnly: true
-            - name: sys
-              mountPath: /sys
-              readOnly: true
-            - name: docker
-              mountPath: /var/lib/docker
-              readOnly: true
-      volumes:
-        - name: rootfs
-          hostPath: { path: / }
-        - name: var-run
-          hostPath: { path: /var/run }
-        - name: sys
-          hostPath: { path: /sys }
-        - name: docker
-          hostPath: { path: /var/lib/docker }
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: cadvisor
-  namespace: monitoring
-spec:
-  selector:
-    app: cadvisor
-  ports:
-    - port: 8080
-      targetPort: 8080
----
-# ========== NODE EXPORTER ==========
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: node-exporter
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app: node-exporter
-  template:
-    metadata:
-      labels:
-        app: node-exporter
-    spec:
-      hostNetwork: true
-      containers:
-        - name: node-exporter
-          image: prom/node-exporter:v1.7.0
-          ports:
-            - containerPort: 9100
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: node-exporter
-  namespace: monitoring
-spec:
-  selector:
-    app: node-exporter
-  ports:
-    - port: 9100
-      targetPort: 9100

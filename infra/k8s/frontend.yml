@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: todo-frontend
-          image: DOCKER_HUB_USER/todo-frontend:latest  # Remplacé par CI/CD
+          image: eboutahar/todo-frontend:v1
           ports:
             - containerPort: 80
           readinessProbe:
@@ -45,33 +45,8 @@ metadata:
 spec:
   selector:
     app: todo-frontend
+  type: NodePort
   ports:
     - port: 80
       targetPort: 80
----
-# --- Ingress pour accès externe ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: todo-ingress
-  namespace: todo-app
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  rules:
-    - http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: frontend
-                port:
-                  number: 80
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: backend
-                port:
-                  number: 8000
+      nodePort: 30080

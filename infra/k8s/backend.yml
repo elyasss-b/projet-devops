@@ -8,7 +8,6 @@ spec:
   selector:
     matchLabels:
       app: todo-backend
-  # --- Zero-downtime: Rolling Update ---
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -21,13 +20,12 @@ spec:
     spec:
       containers:
         - name: todo-backend
-          image: DOCKER_HUB_USER/todo-backend:latest  # Remplacé par CI/CD
+          image: eboutahar/todo-backend:v1
           ports:
             - containerPort: 8000
           env:
             - name: DATABASE_URL
-              value: postgresql://todo_user:todo_pass@db:5432/todo_db
-          # --- Health checks pour zero-downtime ---
+              value: postgresql://todo_user:todo_pass@db.todo-app.svc.cluster.local:5432/todo_db
           readinessProbe:
             httpGet:
               path: /api/health
@@ -60,7 +58,6 @@ spec:
     - port: 8000
       targetPort: 8000
 ---
-# --- Auto-scaling ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
