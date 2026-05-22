@@ -75,7 +75,7 @@ async def startup():
     await database.connect()
     instrumentator.expose(app, include_in_schema=False, should_gzip=False)
     # Init gauge with current active tasks count
-    query = tasks.select().where(tasks.c.completed == False)
+    query = tasks.select().where(tasks.c.completed.is_(False))
     rows = await database.fetch_all(query)
     TASKS_ACTIVE.set(len(rows))
 
