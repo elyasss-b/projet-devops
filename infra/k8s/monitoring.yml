@@ -12,6 +12,8 @@ data:
   prometheus.yml: |
     global:
       scrape_interval: 15s
+    rule_files:
+      - /etc/prometheus/alerts.yml
     scrape_configs:
       - job_name: 'prometheus'
         static_configs:
@@ -19,9 +21,54 @@ data:
       - job_name: 'node-exporter'
         static_configs:
           - targets: ['node-exporter:9100']
-      - job_name: 'kube-state'
+      - job_name: 'todo-backend'
+        metrics_path: /metrics
         static_configs:
-          - targets: ['kube-state-metrics.kube-system.svc.cluster.local:8080']
+          - targets: ['backend.todo-app.svc.cluster.local:8000']
+  alerts.yml: |
+    groups:
+      - name: todo-app-alerts
+        rules:
+          - alert: BackendDown
+            expr: up{job="todo-backend"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Backend Todo App est DOWN"
+              description: "Le backend ne repond plus depuis 1 minute"
+          - alert: HighLatency
+            expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{handler=~"/api/.*"}[5m])) > 1
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Latence elevee sur l API"
+              description: "Le p95 de latence depasse 1 seconde depuis 2 minutes"
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+            for: 2m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Taux d erreurs eleve"
+              description: "Plus de 5% de requetes en erreur 5xx"
+          - alert: HighCPU
+            expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "CPU eleve"
+              description: "Utilisation CPU au dessus de 80% depuis 5 minutes"
+          - alert: HighMemory
+            expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "Memoire elevee"
+              description: "Utilisation memoire au dessus de 85%"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -123,6 +170,23 @@ spec:
               value: admin
             - name: GF_SECURITY_ADMIN_PASSWORD
               value: admin
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboards-config
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards-json
+              mountPath: /var/lib/grafana/dashboards
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboards-config
+          configMap:
+            name: grafana-dashboards-config
+        - name: dashboards-json
+          configMap:
+            name: grafana-dashboard-todo
 ---
 apiVersion: v1
 kind: Service
@@ -137,3 +201,163 @@ spec:
     - port: 3000
       targetPort: 3000
       nodePort: 30030
+---
+# --- Auto-provisioning Grafana datasources ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.monitoring.svc.cluster.local:9090
+        isDefault: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.logging.svc.cluster.local:3100
+---
+# --- Auto-provisioning Grafana dashboard config ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-config
+  namespace: monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: default
+        folder: Todo App
+        type: file
+        options:
+          path: /var/lib/grafana/dashboards
+---
+# --- Dashboard applicatif Todo App ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-todo
+  namespace: monitoring
+data:
+  todo-app-dashboard.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "title": "Requetes par seconde",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [{
+            "expr": "rate(http_requests_total{handler=~\"/api/.*\"}[5m])",
+            "legendFormat": "{{method}} {{handler}} {{status}}"
+          }],
+          "fieldConfig": { "defaults": { "unit": "reqps" } }
+        },
+        {
+          "title": "Latence API (p95)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [{
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{handler=~\"/api/.*\"}[5m]))",
+            "legendFormat": "{{handler}}"
+          }],
+          "fieldConfig": { "defaults": { "unit": "s" } }
+        },
+        {
+          "title": "Taches actives",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+          "targets": [{
+            "expr": "todo_tasks_active",
+            "legendFormat": "Taches actives"
+          }],
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 100}] } } }
+        },
+        {
+          "title": "Taches creees (total)",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+          "targets": [{
+            "expr": "todo_tasks_created_total",
+            "legendFormat": "Total crees"
+          }]
+        },
+        {
+          "title": "Taches completees (total)",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+          "targets": [{
+            "expr": "todo_tasks_completed_total",
+            "legendFormat": "Total completees"
+          }]
+        },
+        {
+          "title": "Taches supprimees (total)",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+          "targets": [{
+            "expr": "todo_tasks_deleted_total",
+            "legendFormat": "Total supprimees"
+          }]
+        },
+        {
+          "title": "Taux d erreurs HTTP 5xx",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "targets": [{
+            "expr": "rate(http_requests_total{status=~\"5..\"}[5m])",
+            "legendFormat": "Erreurs 5xx"
+          }],
+          "fieldConfig": { "defaults": { "unit": "reqps", "color": { "mode": "fixed", "fixedColor": "red" } } }
+        },
+        {
+          "title": "Duree requetes DB (p95)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "targets": [{
+            "expr": "histogram_quantile(0.95, rate(todo_db_query_duration_seconds_bucket[5m]))",
+            "legendFormat": "DB p95"
+          }],
+          "fieldConfig": { "defaults": { "unit": "s" } }
+        },
+        {
+          "title": "Requetes HTTP en cours",
+          "type": "gauge",
+          "gridPos": { "h": 4, "w": 12, "x": 0, "y": 20 },
+          "targets": [{
+            "expr": "sum(todo_http_requests_inprogress)",
+            "legendFormat": "In progress"
+          }],
+          "fieldConfig": { "defaults": { "min": 0, "max": 100, "thresholds": { "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 60}] } } }
+        },
+        {
+          "title": "Health Check Backend",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 12, "x": 12, "y": 20 },
+          "targets": [{
+            "expr": "up{job=\"todo-backend\"}",
+            "legendFormat": "Backend"
+          }],
+          "fieldConfig": { "defaults": { "mappings": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}] } }
+        }
+      ],
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["todo-app", "metier"],
+      "templating": { "list": [] },
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "Todo App - Dashboard Metier",
+      "uid": "todo-app-metier"
+    }

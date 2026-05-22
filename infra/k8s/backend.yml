@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: todo-backend
-          image: eboutahar/todo-backend:v1
+          image: eboutahar/todo-backend:v2
           ports:
             - containerPort: 8000
           env:
