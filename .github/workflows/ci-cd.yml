@@ -205,7 +205,7 @@ jobs:
                 - port: 5432
             K8S
             
-            sleep 15
+            sleep 30
             
             # Deploy backend
             kubectl -n todo-app apply -f - << 'K8S'
@@ -241,7 +241,7 @@ jobs:
                 - port: 8000
             K8S
             
-            sleep 20
+            sleep 45
             
             # Run integration tests
             echo "=== Running integration tests ==="
