@@ -151,7 +151,7 @@ jobs:
         with:
           host: ${{ env.INTEGRATION_IP }}
           username: ubuntu
-          key: ${{ secrets.PROD_SSH_KEY }}
+          key: ${{ secrets.OVH_SSH_KEY }}
           command_timeout: 5m
           script: |
             # Install Docker
