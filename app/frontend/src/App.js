@@ -61,7 +61,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>📋 Todo App</h1>
+        <h1>📋 Todo App V2</h1>
         <p className="subtitle">Projet DevOps — CI/CD &amp; Kubernetes</p>
       </header>
 
