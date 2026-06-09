@@ -93,5 +93,5 @@ Pipeline GitHub Actions automatique sur push `main` :
 
 ## Équipe
 
-- **Personne A** : Dev + CI/CD
-- **Personne B** : Ops + Infra
+- **Elyas** : Dev + CI/CD
+- **Chayma** : Ops + Infra
