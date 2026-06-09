@@ -1,8 +1,8 @@
-# 📋 Todo App — Projet DevOps
+# Todo App — Projet DevOps
 
 Application de gestion de tâches déployée dans un environnement de production Kubernetes, suivant les bonnes pratiques DevOps.
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
@@ -12,7 +12,7 @@ Application de gestion de tâches déployée dans un environnement de production
 └─────────────┘     └─────────────┘     └─────────────┘
 ```
 
-## 📁 Structure du projet
+## Structure du projet
 
 ```
 projet-devops/
@@ -28,7 +28,7 @@ projet-devops/
 └── docs/                  # Documentation projet
 ```
 
-## 🚀 Quick Start (Local/Staging)
+## Quick Start (Local/Staging)
 
 ```bash
 cd app/
@@ -36,7 +36,7 @@ docker-compose up --build
 ```
 L'app est accessible sur `http://localhost`.
 
-## ☸️ Déploiement Production (K3s)
+## Déploiement Production (K3s)
 
 ### Prérequis
 - 2 VMs Ubuntu (OVH Cloud)
@@ -65,7 +65,7 @@ kubectl apply -f infra/k8s/logging.yml
 - Grafana : `http://<MASTER_IP>:30030` (admin/admin)
 - Prometheus : `http://<MASTER_IP>:30090`
 
-## 🔄 CI/CD
+## CI/CD
 
 Pipeline GitHub Actions automatique sur push `main` :
 1. Lint + Tests
@@ -77,7 +77,7 @@ Pipeline GitHub Actions automatique sur push `main` :
 - `DOCKER_HUB_USERNAME` / `DOCKER_HUB_TOKEN`
 - `PROD_SERVER_IP` / `PROD_SERVER_USER` / `PROD_SSH_KEY`
 
-## ✅ Pratiques DevOps implémentées
+## Pratiques DevOps implémentées
 
 | Pratique | Outil |
 |---|---|
@@ -91,7 +91,7 @@ Pipeline GitHub Actions automatique sur push `main` :
 | Logging | Loki + Promtail |
 | Versioning | Git (mono-repo) |
 
-## 👥 Équipe
+## Équipe
 
 - **Personne A** : Dev + CI/CD
 - **Personne B** : Ops + Infra
